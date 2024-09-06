@@ -38,25 +38,41 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # وظيفة لتحميل الملفات
 def download_file(url: str, filename: str):
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers.get('content-length', 0))
-    with open(filename, 'wb') as file, tqdm(
-        desc=filename,
-        total=total_size,
-        unit='iB',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as bar:
-        for data in response.iter_content(chunk_size=1024):
-            bar.update(len(data))
-            file.write(data)
+    try:
+        # المحاولة الأولى باستخدام requests
+        response = requests.get(url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
+        with open(filename, 'wb') as file, tqdm(
+            desc=filename,
+            total=total_size,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar:
+            for data in response.iter_content(chunk_size=1024):
+                bar.update(len(data))
+                file.write(data)
+    except Exception as e:
+        print(f"Error using requests: {e}")
+        # محاولة بديلة باستخدام urllib إذا فشل requests
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(url, filename)
+            print("Downloaded using urllib.")
+        except Exception as e:
+            print(f"Error using urllib: {e}")
+            raise Exception("Download failed with both methods.")
 
 # وظيفة لتحويل الفيديو باستخدام ffmpeg
 def convert_video(filename: str):
-    output_file = 'converted_video.mp4'
-    command = ['ffmpeg', '-i', filename, '-vcodec', 'libx264', '-acodec', 'aac', output_file]
-    subprocess.run(command, check=True)
-    return output_file
+    try:
+        output_file = 'converted_video.mp4'
+        command = ['ffmpeg', '-i', filename, '-vcodec', 'libx264', '-acodec', 'aac', output_file]
+        subprocess.run(command, check=True)
+        return output_file
+    except subprocess.CalledProcessError as e:
+        print(f"Error using ffmpeg: {e}")
+        raise Exception("Video conversion failed.")
 
 # معالجة بدء البوت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,21 +84,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     download_filename = 'downloaded_file'
     convert_filename = None
 
-    # تحميل الملف
-    download_file(url, download_filename)
+    try:
+        # محاولة تحميل الملف
+        download_file(url, download_filename)
 
-    # إذا كان الملف فيديو يتم تحويله
-    if download_filename.lower().endswith(('.mp4', '.mov', '.avi')):
-        convert_filename = convert_video(download_filename)
+        # إذا كان الملف فيديو يتم تحويله
+        if download_filename.lower().endswith(('.mp4', '.mov', '.avi')):
+            convert_filename = convert_video(download_filename)
 
-    # إرسال الملف بعد التحويل إذا كان فيديو
-    with open(convert_filename if convert_filename else download_filename, 'rb') as file:
-        await update.message.reply_document(document=file)
-    
-    # حذف الملفات بعد إرسالها
-    os.remove(download_filename)
-    if convert_filename:
-        os.remove(convert_filename)
+        # إرسال الملف بعد التحويل إذا كان فيديو
+        with open(convert_filename if convert_filename else download_filename, 'rb') as file:
+            await update.message.reply_document(document=file)
+        
+        # حذف الملفات بعد إرسالها
+        os.remove(download_filename)
+        if convert_filename:
+            os.remove(convert_filename)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
 
 # معالجة الأخطاء
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
