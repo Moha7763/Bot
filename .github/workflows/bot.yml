@@ -1,4 +1,4 @@
-name: Run Telegram Bot
+name: Run Telegram Bot on Windows
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # استخدام Windows بدلاً من Ubuntu
 
     steps:
       - name: Checkout repository
@@ -21,11 +21,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install python-telegram-bot==20.2 requests==2.28.1 tqdm==4.65.0
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
+          python -m pip install --upgrade pip
+          pip install python-telegram-bot requests tqdm
+          choco install ffmpeg  # تثبيت ffmpeg على نظام Windows
+          
       - name: Create and run bot script
         run: |
           #!/usr/bin/env python
