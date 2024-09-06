@@ -23,16 +23,79 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install python-telegram-bot==20.2 requests==2.28.1 tqdm==4.65.0 moviepy==1.0.3
-        continue-on-error: true
 
-      - name: List files in the repository
-        run: ls -la  # يعرض جميع الملفات والمجلدات للتأكد من وجود السكربت
+      - name: Create and run bot script
+        run: |
+          #!/usr/bin/env python
+          import os
+          from telegram import Update, InputFile
+          from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+          import requests
+          from tqdm import tqdm
+          from moviepy.editor import VideoFileClip
 
-      - name: Display contents of bot.py
-        run: cat bot.py  # يعرض محتويات سكربت البوت للتأكد من صحته
-        continue-on-error: true
+          # Function to download a file from a URL
+          def download_file(url: str, filename: str):
+              response = requests.get(url, stream=True)
+              total_size = int(response.headers.get('content-length', 0))
+              with open(filename, 'wb') as file, tqdm(
+                  desc=filename,
+                  total=total_size,
+                  unit='iB',
+                  unit_scale=True,
+                  unit_divisor=1024,
+              ) as bar:
+                  for data in response.iter_content(chunk_size=1024):
+                      bar.update(len(data))
+                      file.write(data)
 
-      - name: Run bot
-        run: python bot.py
+          # Function to convert video for Telegram
+          def convert_video(filename: str):
+              video = VideoFileClip(filename)
+              output_file = 'converted_video.mp4'
+              video.write_videofile(output_file, codec='libx264', audio_codec='aac')
+              return output_file
+
+          # Handler functions
+          async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+              await update.message.reply_text("Welcome! Send me a direct download link.")
+
+          async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+              url = update.message.text
+              download_filename = 'downloaded_file'
+              convert_filename = None
+
+              # Download file
+              download_file(url, download_filename)
+
+              # Check if the file is a video and convert it
+              if download_filename.lower().endswith(('.mp4', '.mov', '.avi')):
+                  convert_filename = convert_video(download_filename)
+
+              # Send the file
+              with open(convert_filename if convert_filename else download_filename, 'rb') as file:
+                  await update.message.reply_document(document=file)
+              
+              # Clean up files
+              os.remove(download_filename)
+              if convert_filename:
+                  os.remove(convert_filename)
+
+          # Error handler
+          async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+              error_message = f"An error occurred: {context.error}"
+              await context.bot.send_message(chat_id=update.effective_chat.id, text=error_message)
+
+          # Main bot logic
+          async def main():
+              application = Application.builder().token('YOUR_BOT_TOKEN').build()
+              application.add_handler(CommandHandler("start", start))
+              application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+              application.add_error_handler(error_handler)
+              await application.run_polling()
+
+          if __name__ == '__main__':
+              import asyncio
+              asyncio.run(main())
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          YOUR_BOT_TOKEN: ${{ secrets.YOUR_BOT_TOKEN }}
