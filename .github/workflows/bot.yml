@@ -1,1 +1,38 @@
+name: Run Telegram Bot
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install python-telegram-bot==20.2 requests==2.28.1 tqdm==4.65.0 moviepy==1.0.3
+        continue-on-error: true
+
+      - name: List files in the repository
+        run: ls -la  # يعرض جميع الملفات والمجلدات للتأكد من وجود السكربت
+
+      - name: Display contents of bot.py
+        run: cat bot.py  # يعرض محتويات سكربت البوت للتأكد من صحته
+        continue-on-error: true
+
+      - name: Run bot
+        run: python bot.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
