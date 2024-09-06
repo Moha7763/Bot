@@ -1,94 +1,97 @@
-name: Run Telegram Bot
+name: Telegram Bot File Downloader and Uploader
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
-  run-telegram-bot:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install telethon tqdm requests moviepy
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install telethon tqdm requests moviepy
 
-      - name: Run bot
-        run: |
-          import os
-          import requests
-          from telethon import TelegramClient, events
-          from tqdm import tqdm
-          from moviepy.editor import VideoFileClip
-          import asyncio
+    - name: Run bot
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+        TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      run: |
+        import os
+        import requests
+        from telethon import TelegramClient, events
+        from tqdm import tqdm
+        from moviepy.editor import VideoFileClip
+        import asyncio
 
-          # Telegram API credentials
-          bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-          api_id = os.getenv('TELEGRAM_API_ID')
-          api_hash = os.getenv('TELEGRAM_API_HASH')
+        # تعيين المتغير لتجنب استخدام X server
+        os.environ['IMAGEIO_FFMPEG_NO_PREVIEW'] = 'True'
 
-          client = TelegramClient('anon', api_id, api_hash)
+        # بيانات اعتماد API الخاصة بتليجرام
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        api_id = os.getenv('TELEGRAM_API_ID')
+        api_hash = os.getenv('TELEGRAM_API_HASH')
 
-          # Event handler for incoming messages
-          @client.on(events.NewMessage)
-          async def handle_message(event):
-              chat_id = event.chat_id
-              download_url = event.message.text
-              file_path = './downloaded_file'
+        client = TelegramClient('anon', api_id, api_hash)
 
-              # Download file
-              async def download_file(url, file_path):
-                  try:
-                      response = requests.get(url, stream=True)
-                      total_size = int(response.headers.get('content-length', 0))
-                      block_size = 1024
-                      t = tqdm(total=total_size, unit='iB', unit_scale=True)
+        # معالج الرسائل الواردة
+        @client.on(events.NewMessage)
+        async def handle_message(event):
+            chat_id = event.chat_id
+            download_url = event.message.text
+            file_path = './downloaded_file'
 
-                      with open(file_path, 'wb') as file:
-                          for data in response.iter_content(block_size):
-                              t.update(len(data))
-                              file.write(data)
-                      t.close()
-                  except Exception as e:
-                      await client.send_message(chat_id, f"Error during download: {e}")
-                      raise e
+            # تحميل الملف
+            async def download_file(url, file_path):
+                try:
+                    response = requests.get(url, stream=True)
+                    total_size = int(response.headers.get('content-length', 0))
+                    block_size = 1024
+                    t = tqdm(total=total_size, unit='iB', unit_scale=True)
 
-              # Upload file
-              async def upload_to_telegram(file_path, chat_id):
-                  try:
-                      if file_path.endswith(('.mp4', '.mov', '.avi')):
-                          clip = VideoFileClip(file_path)
-                          clip = clip.resize(height=480)
-                          file_path_resized = "resized_video.mp4"
-                          clip.write_videofile(file_path_resized)
-                          file_path = file_path_resized
-                      
-                      await client.send_file(chat_id, file_path)
-                      
-                      os.remove(file_path)
-                  except Exception as e:
-                      await client.send_message(chat_id, f"Error during upload: {e}")
-                      raise e
+                    with open(file_path, 'wb') as file:
+                        for data in response.iter_content(block_size):
+                            t.update(len(data))
+                            file.write(data)
+                    t.close()
+                except Exception as e:
+                    await client.send_message(chat_id, f"Error during download: {e}")
+                    raise e
 
-              await download_file(download_url, file_path)
-              await upload_to_telegram(file_path, chat_id)
+            # رفع الملف إلى تليجرام
+            async def upload_to_telegram(file_path, chat_id):
+                try:
+                    # إذا كان الملف فيديو يتم تحويله إلى صيغة تلجرام
+                    if file_path.endswith(('.mp4', '.mov', '.avi')):
+                        clip = VideoFileClip(file_path)
+                        clip = clip.resize(height=480)
+                        file_path_resized = "resized_video.mp4"
+                        clip.write_videofile(file_path_resized)
+                        file_path = file_path_resized
 
-          # Start the bot
-          with client:
-              client.run_until_disconnected()
+                    await client.send_file(chat_id, file_path)
 
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+                    # حذف الملف بعد الإرسال
+                    os.remove(file_path)
+                except Exception as e:
+                    await client.send_message(chat_id, f"Error during upload: {e}")
+                    raise e
+
+            await download_file(download_url, file_path)
+            await upload_to_telegram(file_path, chat_id)
+
+        # تشغيل البوت
+        with client:
+            client.run_until_disconnected()
