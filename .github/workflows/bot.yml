@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest  # استخدام Windows بدلاً من Ubuntu
+    runs-on: windows-latest  # تشغيل على Windows
 
     steps:
       - name: Checkout repository
@@ -23,80 +23,84 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install python-telegram-bot requests tqdm
-          choco install ffmpeg  # تثبيت ffmpeg على نظام Windows
-          
-      - name: Create and run bot script
+          choco install ffmpeg  # تثبيت ffmpeg على Windows
+
+      - name: Run bot script
+        shell: bash  # استخدام Bash لتشغيل Python
         run: |
-          #!/usr/bin/env python
-          import os
-          from telegram import Update
-          from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-          import requests
-          from tqdm import tqdm
-          import subprocess
+          python -c "
+import os
+import requests
+from tqdm import tqdm
+import subprocess
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-          # Function to download a file from a URL
-          def download_file(url: str, filename: str):
-              response = requests.get(url, stream=True)
-              total_size = int(response.headers.get('content-length', 0))
-              with open(filename, 'wb') as file, tqdm(
-                  desc=filename,
-                  total=total_size,
-                  unit='iB',
-                  unit_scale=True,
-                  unit_divisor=1024,
-              ) as bar:
-                  for data in response.iter_content(chunk_size=1024):
-                      bar.update(len(data))
-                      file.write(data)
+# وظيفة لتحميل الملفات
+def download_file(url: str, filename: str):
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get('content-length', 0))
+    with open(filename, 'wb') as file, tqdm(
+        desc=filename,
+        total=total_size,
+        unit='iB',
+        unit_scale=True,
+        unit_divisor=1024,
+    ) as bar:
+        for data in response.iter_content(chunk_size=1024):
+            bar.update(len(data))
+            file.write(data)
 
-          # Function to convert video using ffmpeg
-          def convert_video(filename: str):
-              output_file = 'converted_video.mp4'
-              command = ['ffmpeg', '-i', filename, '-vcodec', 'libx264', '-acodec', 'aac', output_file]
-              subprocess.run(command, check=True)
-              return output_file
+# وظيفة لتحويل الفيديو باستخدام ffmpeg
+def convert_video(filename: str):
+    output_file = 'converted_video.mp4'
+    command = ['ffmpeg', '-i', filename, '-vcodec', 'libx264', '-acodec', 'aac', output_file]
+    subprocess.run(command, check=True)
+    return output_file
 
-          # Handler functions
-          async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-              await update.message.reply_text("Welcome! Send me a direct download link.")
+# معالجة بدء البوت
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('أرسل لي رابط تحميل مباشر للملف.')
 
-          async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-              url = update.message.text
-              download_filename = 'downloaded_file'
-              convert_filename = None
+# معالجة الرسائل
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
+    download_filename = 'downloaded_file'
+    convert_filename = None
 
-              # Download file
-              download_file(url, download_filename)
+    # تحميل الملف
+    download_file(url, download_filename)
 
-              # Check if the file is a video and convert it
-              if download_filename.lower().endswith(('.mp4', '.mov', '.avi')):
-                  convert_filename = convert_video(download_filename)
+    # إذا كان الملف فيديو يتم تحويله
+    if download_filename.lower().endswith(('.mp4', '.mov', '.avi')):
+        convert_filename = convert_video(download_filename)
 
-              # Send the file
-              with open(convert_filename if convert_filename else download_filename, 'rb') as file:
-                  await update.message.reply_document(document=file)
-              
-              # Clean up files
-              os.remove(download_filename)
-              if convert_filename:
-                  os.remove(convert_filename)
+    # إرسال الملف بعد التحويل إذا كان فيديو
+    with open(convert_filename if convert_filename else download_filename, 'rb') as file:
+        await update.message.reply_document(document=file)
+    
+    # حذف الملفات بعد إرسالها
+    os.remove(download_filename)
+    if convert_filename:
+        os.remove(convert_filename)
 
-          # Error handler
-          async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-              error_message = f"An error occurred: {context.error}"
-              await context.bot.send_message(chat_id=update.effective_chat.id, text=error_message)
+# معالجة الأخطاء
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    error_message = f'حدث خطأ: {context.error}'
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=error_message)
 
-          # Main bot logic
-          async def main():
-              application = Application.builder().token('YOUR_BOT_TOKEN').build()
-              application.add_handler(CommandHandler("start", start))
-              application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-              application.add_error_handler(error_handler)
-              await application.run_polling()
+# تشغيل البوت
+async def main():
+    application = Application.builder().token(os.environ['YOUR_BOT_TOKEN']).build()
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_error_handler(error_handler)
+    await application.run_polling()
 
-          if __name__ == '__main__':
-              import asyncio
-              asyncio.run(main())
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
+          "
+
         env:
           YOUR_BOT_TOKEN: ${{ secrets.YOUR_BOT_TOKEN }}
