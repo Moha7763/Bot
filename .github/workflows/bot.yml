@@ -28,7 +28,7 @@ jobs:
       - name: Run bot script
         shell: bash  # استخدام Bash لتشغيل Python
         run: |
-          python -c "
+          python - <<EOF
 import os
 import requests
 from tqdm import tqdm
@@ -100,7 +100,7 @@ async def main():
 if __name__ == '__main__':
     import asyncio
     asyncio.run(main())
-          "
+EOF
 
         env:
           YOUR_BOT_TOKEN: ${{ secrets.YOUR_BOT_TOKEN }}
